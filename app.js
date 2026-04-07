@@ -98,7 +98,7 @@ window.app = {
     },
 
     // --- Sincronización con Nube (Google Sheets v4.8) ---
-    scriptUrl: 'https://script.google.com/macros/s/AKfycbyVe0yPUBRL3X6uVs01QfXTQiKojKC0C_-SPMlQz1OFwgxoOgiIt_WOO2dtlO4YXKwC/exec',
+    scriptUrl: 'https://script.google.com/macros/s/AKfycbzmCUaH9VzU1Xs85EWrs2DAqzym2Z2ev0OM6QJxO2vLMRabVcI-teEhn3z5nRADu4Hu/exec',
 
     async loadDB() {
         try {
@@ -176,15 +176,48 @@ window.app = {
                 const k = keys.find(key => words.some(w => key.toLowerCase().includes(w)));
                 return k ? q[k] : null;
             };
+            
+            // Recuperar detalle (Sistema de Doble Seguridad: Columna or Piggybacking)
+            let items = [];
+            let notes = get(['notas', 'notes', 'observa']) || '';
+            const detailStr = get(['detalle', 'items', 'itemsjson', 'detalle_json']);
+            
+            if (detailStr && String(detailStr).length > 2) {
+                try { 
+                    items = typeof detailStr === 'string' ? JSON.parse(detailStr) : detailStr; 
+                } catch(e) {}
+            } 
+            
+            // Si la columna Detalle falló, intentamos recuperar del "Plan B" en Notas
+            if (items.length === 0) {
+                if (notes.includes(" ITEMS:")) {
+                    const parts = notes.split(" ITEMS:");
+                    notes = parts[0];
+                    try { items = JSON.parse(parts[1]); } catch(e) {}
+                } else if (notes.includes(" [DETALLE:")) {
+                    const parts = notes.split(" [DETALLE:");
+                    notes = parts[0];
+                    try { items = JSON.parse(parts[1].replace("]", "")); } catch(e) {}
+                } else if (notes.includes(" @@")) {
+                    const parts = notes.split(" @@");
+                    notes = parts[0];
+                    try { items = JSON.parse(decodeURIComponent(escape(window.atob(parts[1])))); } catch(e) {}
+                }
+            }
+
             return {
                 id: q.id || get(['id']) || Date.now() + Math.random(),
                 number: String(get(['numero', 'number', 'cotizacion', 'folio']) || '').trim(),
                 customerName: String(get(['customer', 'cliente', 'razon']) || 'Cliente Desconocido').trim(),
+                rtn: get(['rtn', 'id', 'fiscal']) || '',
+                address: get(['direccion', 'address', 'ubicacion']) || '',
                 date: get(['date', 'fecha']) || new Date().toISOString(),
                 dueDate: get(['due', 'vence', 'vencimiento']) || '',
                 total: parseFloat(get(['total', 'monto', 'valor', 'suma'])) || 0,
                 seller: get(['seller', 'vendedor', 'vende']) || 'General',
-                facturada: String(get(['facturada', 'factura', 'ok'])).toUpperCase() === 'SI'
+                facturada: String(get(['facturada', 'factura', 'ok'])).toUpperCase() === 'SI',
+                notes: notes,
+                items: items
             };
         });
 
@@ -224,7 +257,7 @@ window.app = {
                 "Telefonos": c.phones
             })),
             "sellers": this.data.vendedores.map(v => ({ "Codigo": v.id, "Nombre": v.name })),
-            "quotes": this.data.cotizaciones.map(q => ({ 
+            "quotes": this.data.cotizaciones.map(q => ({
                 "ID": q.id, 
                 "Numero": q.number, 
                 "Cliente": q.customerName, 
@@ -234,7 +267,9 @@ window.app = {
                 "Vencimiento": q.dueDate || "", 
                 "Total": q.total, 
                 "Facturada": q.facturada ? "SI" : "NO", 
-                "Notas": q.notes || ""
+                "Notas": q.notes || "",
+                "Detalle": JSON.stringify(q.items || []),
+                "Direccion": q.address || ""
             })),
             "config": { "nextNumber": this.data.config.nextNumber }
         };
@@ -249,113 +284,9 @@ window.app = {
         } catch (e) { console.error(e); }
     },
 
-    saveFinalQuote() {
-        const customer = document.getElementById('quote-customer').value;
-        const rtn = document.getElementById('quote-rtn').value;
-        const address = document.getElementById('quote-address').value;
-        const seller = document.getElementById('quote-vendedor').value;
-        const dueDate = document.getElementById('quote-due-date').value;
-        const notes = document.getElementById('quote-notes').value;
 
-        if (!customer) return this.notify('Seleccione un cliente', 'error');
 
-        const items = [];
-        document.querySelectorAll('#quote-items-body tr').forEach(tr => {
-            const pInput = tr.querySelector('.prod-input');
-            const qInput = tr.querySelector('.qty-input');
-            const prInput = tr.querySelector('.price-input');
-            if (pInput && qInput && prInput) {
-                const prod = pInput.value;
-                const qty = this.parseNum(qInput.value);
-                const price = this.parseNum(prInput.value);
-                if (prod && qty > 0) {
-                    items.push({
-                        code: prod.split(' - ')[0],
-                        description: prod.split(' - ').slice(1).join(' - '),
-                        qty, price, total: qty * price
-                    });
-                }
-            }
-        });
 
-        if (items.length === 0) return this.notify('Agregue al menos un producto', 'error');
-
-        const nextNum = (this.data.config && this.data.config.nextNumber) ? this.data.config.nextNumber : 859;
-        const q = {
-            id: Date.now(),
-            number: String(nextNum),
-            customerName: customer,
-            rtn, address, seller,
-            date: this.getLocalDate(),
-            dueDate, items,
-            total: items.reduce((a, b) => a + b.total, 0) * 1.15,
-            notes, facturada: false
-        };
-
-        this.data.config.nextNumber = nextNum + 1;
-        this.data.cotizaciones.unshift(q);
-        this.saveDB();
-        this.render('preview', q);
-        this.notify(`Cotización #${q.number} guardada exitosamente`);
-    },
-
-    saveFinalQuote() {
-        try {
-            const customer = document.getElementById('quote-customer').value;
-            const rtn = document.getElementById('quote-rtn').value;
-            const address = document.getElementById('quote-address').value;
-            const seller = document.getElementById('quote-vendedor').value;
-            const dueDate = document.getElementById('quote-due-date').value;
-            const notes = document.getElementById('quote-notes').value;
-
-            if (!customer) return this.notify('Seleccione un cliente', 'error');
-
-            const items = [];
-            document.querySelectorAll('#quote-items-body tr').forEach(tr => {
-                const pVal = tr.querySelector('.prod-input').value;
-                const qVal = this.parseNum(tr.querySelector('.qty-input').value);
-                const prVal = this.parseNum(tr.querySelector('.price-input').value);
-                if (pVal && qVal > 0) {
-                    items.push({
-                        code: pVal.split(' - ')[0],
-                        description: pVal.split(' - ').slice(1).join(' - '),
-                        qty: qVal,
-                        price: prVal,
-                        total: qVal * prVal
-                    });
-                }
-            });
-
-            if (items.length === 0) return this.notify('Agregue productos', 'error');
-
-            const total = items.reduce((a, b) => a + b.total, 0) * 1.15;
-            const nextNum = this.data.config.nextNumber || 859;
-
-            const q = {
-                id: Date.now().toString(),
-                number: String(nextNum),
-                customerName: customer,
-                rtn: rtn,
-                address: address,
-                seller: seller,
-                date: this.getLocalDate(),
-                dueDate: dueDate,
-                items: items,
-                total: total,
-                notes: notes,
-                facturada: false
-            };
-
-            this.data.config.nextNumber++;
-            this.data.cotizaciones.unshift(q);
-            this.saveDB();
-            this.render('preview', q);
-            this.notify(`Cotización #${q.number} guardada y sincronizada`);
-        } catch(err) {
-            console.error(err);
-            this.notify('Error al procesar el guardado', 'error');
-        }
-    },
 
     // --- Importaciones Masivas (Desde Excel con SheetJS) ---
     async importFromExcel(e) { /* Importar Productos */ 
@@ -510,6 +441,7 @@ window.app = {
                     productos: this.data.productos, 
                     clientes: this.data.clientes, 
                     vendedores: this.data.vendedores,
+                    cotizaciones: this.data.cotizaciones,
                     currentUser: this.data.currentUser
                 };
             }
@@ -977,14 +909,14 @@ window.app = {
             this.calculateTotals(); 
         }
     },
-    addQuoteItem() {
+    addQuoteItem(itemData = null) {
         const body = document.getElementById('quote-items-body');
         if (!body) return;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><input type="text" list="products-datalist" class="prod-input" placeholder="Producto..." onchange="app.onProductSelect(this)"></td>
-            <td><input type="number" class="qty-input" value="1" min="1" oninput="app.calculateTotals()"></td>
-            <td><input type="number" class="price-input" value="0" step="0.01" oninput="app.calculateTotals()"></td>
+            <td><input type="text" list="products-datalist" class="prod-input" value="${itemData ? (itemData.code + ' - ' + itemData.description) : ''}" placeholder="Producto..." onchange="app.onProductSelect(this)"></td>
+            <td><input type="number" class="qty-input" value="${itemData ? itemData.qty : 1}" min="1" oninput="app.calculateTotals()"></td>
+            <td><input type="number" class="price-input" value="${itemData ? itemData.price : 0}" step="0.01" oninput="app.calculateTotals()"></td>
             <td class="text-right row-total" style="padding-right:1.5rem;">L. 0.00</td>
             <td><button class="btn-icon text-error-color" onclick="this.closest('tr').remove(); app.calculateTotals();"><i data-lucide="trash-2" style="width:16px;"></i></button></td>
         `;
@@ -1118,5 +1050,75 @@ window.app = {
     previewQuote(id) {
         const q = this.data.cotizaciones.find(x => String(x.id) === String(id));
         if (q) this.render('preview', q);
+    },
+
+    showRecallQuoteModal() {
+        const modal = document.getElementById('modal-container');
+        modal.innerHTML = `
+            <div class="modal glass animate-slide-up" style="background:var(--bg-card); padding:35px; border-radius:30px; width:500px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: var(--text-main);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h3 style="margin:0; color:var(--text-main);">Llamar Cotización</h3>
+                    <button class="btn-icon" style="color:var(--text-main);" onclick="document.getElementById('modal-container').classList.add('hidden')"><i data-lucide="x"></i></button>
+                </div>
+                <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:25px;">Busque por número o cliente para importar los datos a esta nueva cotización.</p>
+                <div class="mb-4">
+                    <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text-main);">Buscar en Historial</label>
+                    <input type="text" id="recall-search" list="quotes-datalist" placeholder="Ej: 877 o Nombre del cliente..." style="width:100%; padding:14px; border-radius:12px; border:1px solid var(--border-color); background:var(--bg-color); color:var(--text-main); font-size:1rem;">
+                </div>
+                <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:30px;">
+                    <button class="btn btn-secondary" onclick="document.getElementById('modal-container').classList.add('hidden')">Cancelar</button>
+                    <button class="btn btn-primary" onclick="app.loadQuoteToForm()" style="padding:0 25px;">Cargar Información</button>
+                </div>
+            </div>
+        `;
+        modal.classList.remove('hidden');
+        lucide.createIcons();
+        document.getElementById('recall-search').focus();
+    },
+
+    loadQuoteToForm() {
+        const val = document.getElementById('recall-search').value.trim();
+        if (!val) return;
+        
+        let quote = null;
+        if (val.includes('|')) {
+            const num = val.split('|')[0].trim();
+            quote = this.data.cotizaciones.find(q => String(q.number) === num);
+        } else {
+            // Búsqueda inteligente: número exacto o parcial en nombre/RTN
+            const search = val.toLowerCase();
+            quote = this.data.cotizaciones.find(q => 
+                String(q.number) === val || 
+                (q.customerName || '').toLowerCase().includes(search) ||
+                (q.rtn || '').toLowerCase().includes(search)
+            );
+        }
+        
+        if (!quote) return this.notify('Cotización no encontrada', 'error');
+
+        document.getElementById('modal-container').classList.add('hidden');
+
+        // Poblar encabezado
+        document.getElementById('quote-customer').value = quote.customerName || '';
+        document.getElementById('quote-rtn').value = quote.rtn || '';
+        document.getElementById('quote-address').value = quote.address || '';
+        document.getElementById('quote-notes').value = quote.notes || '';
+        
+        // El vendedor solo se puebla si no está deshabilitado (rol Vendedor)
+        const vInput = document.getElementById('quote-vendedor');
+        if (vInput && !vInput.disabled) vInput.value = quote.seller || '';
+
+        // Limpiar y cargar items
+        const body = document.getElementById('quote-items-body');
+        body.innerHTML = '';
+
+        if (quote.items && quote.items.length > 0) {
+            quote.items.forEach(item => this.addQuoteItem(item));
+        } else {
+            this.addQuoteItem();
+        }
+
+        this.calculateTotals();
+        this.notify('Datos importados correctamente');
     }
 };

@@ -516,30 +516,55 @@ input:focus, select:focus, textarea:focus {
 .text-primary { color: var(--primary-color); }
 .text-danger { color: #ef4444; }
 
+.print-area {
+    max-width: 850px; /* Restaurado para que la vista previa web se vea bien */
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
 /* --- Estilos de Impresión Profesional --- */
+@page {
+    size: letter;
+    margin: 0; /* Controlamos los márgenes por código para total precisión */
+}
+
 @media print {
     /* Ocultar elementos de la UI */
-    .sidebar, .nav, .no-print, .search-bar, .theme-toggle, .header, .btn-secondary, .btn-icon {
+    .sidebar, .nav, .no-print, .search-bar, .theme-toggle, .header, .top-bar, .btn-secondary, .btn-icon {
         display: none !important;
     }
 
     /* Forzar fondo blanco y texto negro */
-    body, html, .main-content, #content-area, .card, .print-area {
+    body, html, #app, .main-content, #content-area {
         background: white !important;
         color: black !important;
         margin: 0 !important;
         padding: 0 !important;
         width: 100% !important;
-        box-shadow: none !important;
-        border: none !important;
+        display: block !important;
     }
 
-    /* Asegurar visibilidad de la cotización */
+    /* Ajuste de la cotización para que coincida EXACTAMENTE con la hoja */
     .print-area {
-        display: block !important;
-        visibility: visible !important;
+        display: flex !important;
+        flex-direction: column !important;
+        background: white !important;
+        width: 21.59cm !important; /* Ancho exacto hoja carta */
+        height: 27.94cm !important; /* Alto exacto hoja carta */
+        max-width: none !important;
+        padding: 1.5cm !important; /* Margen de diseño controlado */
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        border: none !important;
+        box-shadow: none !important;
         position: relative !important;
-        padding: 40px !important;
+    }
+
+    /* Forzar que el pie de página esté abajo del todo */
+    .print-area > div:last-child {
+        margin-top: auto !important;
+        padding-top: 2rem !important;
     }
 
     /* Forzar color de texto en todos los hijos */
@@ -556,7 +581,7 @@ input:focus, select:focus, textarea:focus {
     
     th, td {
         border-bottom: 1px solid #ddd !important;
-        padding: 10px !important;
+        padding: 8px 10px !important;
     }
 }
 

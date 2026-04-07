@@ -17,10 +17,21 @@ window.Views['new-quote'] = (d) => {
     }).join('');
     
     const sellerList = (sellers || []).map(s => `<option value="${s.name}">`).join('');
+    const quotes = d.cotizaciones || [];
+    const quoteList = (quotes || []).sort((a,b) => b.number - a.number).map(q => `<option value="${q.number} | ${q.customerName} - ${window.app.formatDisplayDate(q.date)}">`).join('');
+
     return `
     <datalist id="products-datalist">${prodList}</datalist>
     <datalist id="customers-datalist">${custList}</datalist>
     <datalist id="sellers-datalist">${sellerList}</datalist>
+    <datalist id="quotes-datalist">${quoteList}</datalist>
+    
+    <div class="no-print mb-4" style="display:flex; justify-content: flex-end;">
+        <button class="btn btn-secondary" onclick="app.showRecallQuoteModal()" style="display:flex; align-items:center; gap:8px;">
+            <i data-lucide="search"></i> Llamar Cotización
+        </button>
+    </div>
+
     <div class="quote-form-grid">
         <div class="card glass">
             <div class="flex-between mb-4"><h3>Productos</h3><button class="btn btn-secondary btn-sm" onclick="app.addQuoteItem()"> + Fila</button></div>
