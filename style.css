@@ -531,8 +531,10 @@ input:focus, select:focus, textarea:focus {
 
 @media print {
     /* Ocultar elementos de la UI */
-    .sidebar, .nav, .no-print, .search-bar, .theme-toggle, .header, .top-bar, .btn-secondary, .btn-icon {
+    .sidebar, .nav, .no-print, .search-bar, .theme-toggle, .header, .top-bar, .btn-secondary, .btn-icon, #notification-container, .toast {
         display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
     }
 
     /* Forzar fondo blanco y texto negro */
@@ -644,6 +646,22 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 768px) {
   .quote-form-grid { grid-template-columns: 1fr; }
 }
+/* Modales Premium Centrados */
+#modal-container {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100vh;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+#modal-container.hidden {
+    display: none !important;
+}
+
 /* Notifications / Toast */
 #notification-container {
     position: fixed;
